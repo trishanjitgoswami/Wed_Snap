@@ -92,12 +92,14 @@ def get_embeddings(img_path):
                     pass
     print(f"[embeddings] {os.path.basename(img_path)} → {len(embeddings)} face(s)")
     return embeddings
-
 def load_index():
     if os.path.exists(FAISS_INDEX_FILE) and os.path.exists(FILENAMES_FILE):
         index = faiss.read_index(FAISS_INDEX_FILE)
         with open(FILENAMES_FILE, "rb") as f:
             data = pickle.load(f)
+        # Handle old format (plain list) vs new format (dict)
+        if isinstance(data, list):
+            return index, data, {}
         return index, data["filenames"], data["urls"]
     return faiss.IndexFlatIP(EMBEDDING_DIM), [], {}
 
