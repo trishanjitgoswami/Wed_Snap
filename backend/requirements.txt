@@ -2,8 +2,9 @@ fastapi
 uvicorn
 python-multipart
 opencv-python
-deepface
+deepface==0.0.99
 tf-keras
+tensorflow-cpu
 faiss-cpu
 Pillow
 numpy
