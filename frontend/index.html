@@ -90,9 +90,6 @@
     .progress-bar { height: 100%; background: linear-gradient(90deg, #d4af76, #c49a5a); border-radius: 10px; transition: width 0.2s; width: 0%; }
     .progress-label { font-size: 0.7rem; color: rgba(212,175,118,0.55); text-align: center; min-height: 1.2em; margin-bottom: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .divider-small { height: 0.5px; background: rgba(212,175,118,0.15); margin: 1.5rem 0; }
-    .otp-input { width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.3); border: 0.5px solid rgba(212,175,118,0.2); border-radius: 8px; color: #f0ebe4; font-family: 'Jost', sans-serif; font-size: 1.2rem; outline: none; margin-bottom: 0.8rem; text-align: center; letter-spacing: 0.5em; }
-    .otp-input:focus { border-color: rgba(212,175,118,0.5); }
-    .otp-input::placeholder { letter-spacing: 0.1em; color: rgba(240,235,228,0.2); font-size: 0.8rem; }
   </style>
 </head>
 <body>
@@ -152,32 +149,18 @@
 
     <!-- ADMIN PANEL -->
     <div id="panel-admin" class="panel">
-      <!-- Step 1: Password -->
       <div id="adminLock">
         <div class="admin-lock">
-          <div id="passwordStep">
-            <span class="lock-icon">🔒</span>
-            <div class="lock-text">Enter admin password to continue</div>
-            <input type="password" class="pass-input" id="adminPass"
-              placeholder="Password"
-              onkeydown="if(event.key==='Enter') submitPassword()" />
-            <button class="btn btn-outline" onclick="submitPassword()">Submit</button>
-            <div id="passwordStatus"></div>
-          </div>
-          <!-- Step 2: OTP -->
-          <div id="otpStep" style="display:none">
-            <span class="lock-icon">📱</span>
-            <div class="lock-text">OTP sent to your registered number · valid for 5 minutes</div>
-            <input type="number" class="otp-input" id="otpInput"
-              placeholder="Enter 6-digit OTP"
-              onkeydown="if(event.key==='Enter') submitOtp()" />
-            <button class="btn btn-outline" onclick="submitOtp()">Verify OTP</button>
-            <div id="otpStatus"></div>
-          </div>
+          <span class="lock-icon">🔒</span>
+          <div class="lock-text">Enter admin password to manage event photos</div>
+          <input type="password" class="pass-input" id="adminPass"
+            placeholder="Password"
+            onkeydown="if(event.key==='Enter') submitPassword()" />
+          <button class="btn btn-outline" onclick="submitPassword()">Unlock</button>
+          <div id="passwordStatus"></div>
         </div>
       </div>
 
-      <!-- Unlocked Admin Panel -->
       <div id="adminPanel" style="display:none">
         <div class="card-title">Upload Event Photos</div>
         <div class="card-sub">Select all photos at once — dark photos enhanced automatically</div>
@@ -287,63 +270,23 @@ async function loadDatasetCount() {
   }
 }
 
-// ── OTP Login ──────────────────────────────────────────────────────────────────
-async function submitPassword() {
+function submitPassword() {
   const password = document.getElementById('adminPass').value;
   const statusEl = document.getElementById('passwordStatus');
   if (!password) { showToast('Enter password'); return; }
 
-  statusEl.innerHTML = '<div class="status loading"><span class="spinner"></span>Verifying…</div>';
-
-  try {
-    const r = await fetch(BACKEND+'/verify-password/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
-    });
-    if (r.ok) {
-      statusEl.innerHTML = '';
-      document.getElementById('passwordStep').style.display = 'none';
-      document.getElementById('otpStep').style.display = 'block';
-      showToast('OTP sent to your number!');
-    } else {
-      statusEl.innerHTML = '<div class="status error">✗ Wrong password</div>';
-      document.getElementById('adminPass').value = '';
-      showToast('Wrong password');
-    }
-  } catch(e) {
-    statusEl.innerHTML = '<div class="status error">✗ Cannot reach backend</div>';
+  if (password !== ADMIN_PASSWORD) {
+    statusEl.innerHTML = '<div class="status error">✗ Wrong password</div>';
+    document.getElementById('adminPass').value = '';
+    showToast('Wrong password');
+    return;
   }
+
+  document.getElementById('adminLock').style.display = 'none';
+  document.getElementById('adminPanel').style.display = 'block';
+  showToast('Access granted! 🎉');
 }
 
-async function submitOtp() {
-  const otp = document.getElementById('otpInput').value;
-  const statusEl = document.getElementById('otpStatus');
-  if (!otp) { showToast('Enter OTP'); return; }
-
-  statusEl.innerHTML = '<div class="status loading"><span class="spinner"></span>Verifying OTP…</div>';
-
-  try {
-    const r = await fetch(BACKEND+'/verify-otp/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ otp: otp.toString() })
-    });
-    if (r.ok) {
-      document.getElementById('adminLock').style.display = 'none';
-      document.getElementById('adminPanel').style.display = 'block';
-      showToast('Access granted! 🎉');
-    } else {
-      const data = await r.json();
-      statusEl.innerHTML = `<div class="status error">✗ ${data.detail}</div>`;
-      showToast(data.detail);
-    }
-  } catch(e) {
-    statusEl.innerHTML = '<div class="status error">✗ Cannot reach backend</div>';
-  }
-}
-
-// ── Admin Upload ───────────────────────────────────────────────────────────────
 function triggerAdminUpload() {
   if (!uploadRunning) document.getElementById('adminFile').click();
 }
@@ -426,7 +369,6 @@ async function clearDataset() {
   }
 }
 
-// ── Guest Search ───────────────────────────────────────────────────────────────
 function handleGuestFiles(input) {
   guestFiles = Array.from(input.files);
   if (!guestFiles.length) return;

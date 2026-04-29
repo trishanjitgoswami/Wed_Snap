@@ -1,14 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os, shutil, pickle, threading, random, time
+import os, shutil, pickle, threading
 import numpy as np
 import faiss
 import cv2
-import requests as http_requests
 from deepface import DeepFace
 
-# ── Config ─────────────────────────────────────────────────────────────────────
 ADMIN_PASSWORD   = "08420842"
 UPLOAD_DIR       = "storage/uploads"
 FAISS_INDEX_FILE = "storage/faiss.index"
@@ -21,48 +19,13 @@ EMBEDDING_DIM = 512
 THRESHOLD     = 0.45
 MAX_NEIGHBORS = 500
 
-# Fast2SMS config
-FAST2SMS_API_KEY = "tCzB0FREAg1iw89vY32sI4XDG7UZk5uKVTlNqPM6SmefJpLOhyeKPx4gWqnOQjIECLiwsXBJZ0YVbAS2"
-ADMIN_PHONE      = "9330712831"  # Your number without +91
-
-# OTP store — { otp: expiry_time }
-otp_store = {}
-otp_lock  = threading.Lock()
-
 app = FastAPI(title="WedSnap API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 index_lock = threading.Lock()
 
-# ── OTP helpers ────────────────────────────────────────────────────────────────
-
-def generate_otp() -> str:
-    return str(random.randint(100000, 999999))
-
-def send_otp_sms(otp: str) -> bool:
-    try:
-        url = "https://www.fast2sms.com/dev/bulkV2"
-        payload = {
-            "route": "otp",
-            "variables_values": otp,
-            "numbers": ADMIN_PHONE,
-        }
-        headers = {
-            "authorization": FAST2SMS_API_KEY,
-            "Content-Type": "application/json"
-        }
-        r = http_requests.post(url, json=payload, headers=headers, timeout=10)
-        data = r.json()
-        print(f"[OTP SMS] {data}")
-        return data.get("return", False)
-    except Exception as e:
-        print(f"[OTP SMS error] {e}")
-        return False
-
-# ── Image enhancement ──────────────────────────────────────────────────────────
-
-def enhance_image(img_path: str):
+def enhance_image(img_path):
     try:
         img = cv2.imread(img_path)
         if img is None:
@@ -70,8 +33,7 @@ def enhance_image(img_path: str):
         h, w = img.shape[:2]
         if max(h, w) > 1024:
             scale = 1024 / max(h, w)
-            img = cv2.resize(img, (int(w*scale), int(h*scale)),
-                             interpolation=cv2.INTER_AREA)
+            img = cv2.resize(img, (int(w*scale), int(h*scale)), interpolation=cv2.INTER_AREA)
         lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
@@ -88,7 +50,7 @@ def normalize(vec):
     n = np.linalg.norm(vec)
     return vec / n if n > 0 else vec
 
-def extract_from_path(path: str, min_conf: float = 0.50):
+def extract_from_path(path, min_conf=0.50):
     try:
         results = DeepFace.represent(
             img_path=path,
@@ -107,10 +69,8 @@ def extract_from_path(path: str, min_conf: float = 0.50):
         print(f"[extract error] {e}")
         return []
 
-def get_embeddings(img_path: str):
-    # Pass 1: original
+def get_embeddings(img_path):
     embeddings = extract_from_path(img_path, min_conf=0.60)
-    # Pass 2: enhanced if nothing found
     if not embeddings:
         enhanced_path = enhance_image(img_path)
         if enhanced_path:
@@ -123,8 +83,6 @@ def get_embeddings(img_path: str):
                     pass
     print(f"[embeddings] {os.path.basename(img_path)} → {len(embeddings)} face(s)")
     return embeddings
-
-# ── FAISS ──────────────────────────────────────────────────────────────────────
 
 def load_index():
     if os.path.exists(FAISS_INDEX_FILE) and os.path.exists(FILENAMES_FILE):
@@ -139,52 +97,9 @@ def save_index(index, filenames):
     with open(FILENAMES_FILE, "wb") as f:
         pickle.dump(filenames, f)
 
-# ── Routes ─────────────────────────────────────────────────────────────────────
-
 @app.get("/")
 def root():
     return {"message": "WedSnap API is running."}
-
-# ── OTP routes ─────────────────────────────────────────────────────────────────
-
-@app.post("/verify-password/")
-async def verify_password(data: dict):
-    """Verify admin password and send OTP if correct."""
-    password = data.get("password", "")
-    if password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=403, detail="Wrong password")
-
-    otp = generate_otp()
-    expiry = time.time() + 300  # OTP valid for 5 minutes
-
-    with otp_lock:
-        otp_store.clear()  # Clear old OTPs
-        otp_store[otp] = expiry
-
-    sent = send_otp_sms(otp)
-    if not sent:
-        # Still return success but log error
-        print(f"[OTP] SMS failed, OTP is: {otp}")
-
-    return {"message": "OTP sent to your registered number"}
-
-@app.post("/verify-otp/")
-async def verify_otp(data: dict):
-    """Verify OTP entered by admin."""
-    entered_otp = str(data.get("otp", "")).strip()
-
-    with otp_lock:
-        if entered_otp in otp_store:
-            if time.time() < otp_store[entered_otp]:
-                otp_store.clear()
-                return {"message": "OTP verified", "success": True}
-            else:
-                otp_store.clear()
-                raise HTTPException(status_code=400, detail="OTP expired")
-        else:
-            raise HTTPException(status_code=400, detail="Wrong OTP")
-
-# ── Dataset routes ─────────────────────────────────────────────────────────────
 
 @app.post("/upload_dataset/")
 async def upload_dataset(
@@ -198,7 +113,6 @@ async def upload_dataset(
     with open(save_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Skip if already indexed
     with index_lock:
         _, existing = load_index()
         if file.filename in existing:
@@ -241,9 +155,6 @@ async def search(file: UploadFile = File(...)):
     if index.ntotal == 0:
         return {"result": "No picture detected", "count": 0, "photos": []}
 
-    print(f"[search] {len(query_embeddings)} query face(s), {index.ntotal} indexed faces")
-
-    # Best score per filename — no duplicates, no noise
     best_scores = {}
     for q_emb in query_embeddings:
         q = np.array([q_emb], dtype=np.float32)
