@@ -4,7 +4,7 @@ python-multipart
 opencv-python-headless
 deepface==0.0.99
 tf-keras
-tensorflow==2.15.0
 faiss-cpu
 Pillow
 numpy
+cloudinary

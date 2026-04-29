@@ -1,17 +1,26 @@
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-import os, shutil, pickle, threading
+import os, pickle, threading, shutil
 import numpy as np
 import faiss
 import cv2
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 from deepface import DeepFace
 
-ADMIN_PASSWORD   = "08420842"
-UPLOAD_DIR       = "storage/uploads"
+ADMIN_PASSWORD = "08420842"
+
+cloudinary.config(
+    cloud_name = "dffkk8ano",
+    api_key    = "637784848439562",
+    api_secret = "YUfhmVRX6TcQQoDRlkrgVvqJrfo"
+)
+
+STORAGE_DIR      = "storage"
 FAISS_INDEX_FILE = "storage/faiss.index"
 FILENAMES_FILE   = "storage/filenames.pkl"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(STORAGE_DIR, exist_ok=True)
 
 MODEL         = "Facenet512"
 DETECTOR      = "opencv"
@@ -22,7 +31,6 @@ MAX_NEIGHBORS = 500
 app = FastAPI(title="WedSnap API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 index_lock = threading.Lock()
 
 def enhance_image(img_path):
@@ -33,7 +41,8 @@ def enhance_image(img_path):
         h, w = img.shape[:2]
         if max(h, w) > 1024:
             scale = 1024 / max(h, w)
-            img = cv2.resize(img, (int(w*scale), int(h*scale)), interpolation=cv2.INTER_AREA)
+            img = cv2.resize(img, (int(w*scale), int(h*scale)),
+                             interpolation=cv2.INTER_AREA)
         lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
@@ -88,14 +97,14 @@ def load_index():
     if os.path.exists(FAISS_INDEX_FILE) and os.path.exists(FILENAMES_FILE):
         index = faiss.read_index(FAISS_INDEX_FILE)
         with open(FILENAMES_FILE, "rb") as f:
-            filenames = pickle.load(f)
-        return index, filenames
-    return faiss.IndexFlatIP(EMBEDDING_DIM), []
+            data = pickle.load(f)
+        return index, data["filenames"], data["urls"]
+    return faiss.IndexFlatIP(EMBEDDING_DIM), [], {}
 
-def save_index(index, filenames):
+def save_index(index, filenames, urls):
     faiss.write_index(index, FAISS_INDEX_FILE)
     with open(FILENAMES_FILE, "wb") as f:
-        pickle.dump(filenames, f)
+        pickle.dump({"filenames": filenames, "urls": urls}, f)
 
 @app.get("/")
 def root():
@@ -109,48 +118,69 @@ async def upload_dataset(
     if password != ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-    save_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(save_path, "wb") as buffer:
+    tmp_path = os.path.join(STORAGE_DIR, "_tmp_" + file.filename)
+    with open(tmp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     with index_lock:
-        _, existing = load_index()
-        if file.filename in existing:
+        _, existing_filenames, existing_urls = load_index()
+        if file.filename in existing_filenames:
+            os.remove(tmp_path)
             return {"message": f"'{file.filename}' already in dataset.", "faces_found": 0}
 
-    embeddings = get_embeddings(save_path)
+    embeddings = get_embeddings(tmp_path)
 
     if not embeddings:
+        os.remove(tmp_path)
         return {"message": f"'{file.filename}' uploaded but no face detected.", "faces_found": 0}
 
+    try:
+        result = cloudinary.uploader.upload(
+            tmp_path,
+            folder="wedsnap",
+            public_id=file.filename.rsplit(".", 1)[0],
+            overwrite=True
+        )
+        photo_url = result["secure_url"]
+    except Exception as e:
+        os.remove(tmp_path)
+        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {e}")
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
     with index_lock:
-        index, filenames = load_index()
+        index, filenames, urls = load_index()
         for emb in embeddings:
             index.add(np.array([emb], dtype=np.float32))
             filenames.append(file.filename)
-        save_index(index, filenames)
+        urls[file.filename] = photo_url
+        save_index(index, filenames, urls)
 
-    print(f"[upload] {file.filename} → {len(embeddings)} face(s) indexed")
+    print(f"[upload] {file.filename} → {len(embeddings)} face(s) → {photo_url}")
     return {"message": f"'{file.filename}' uploaded.", "faces_found": len(embeddings)}
 
 @app.post("/search/")
 async def search(file: UploadFile = File(...)):
-    query_path = os.path.join(UPLOAD_DIR, "_query_" + file.filename)
-    with open(query_path, "wb") as buffer:
+    tmp_path = os.path.join(STORAGE_DIR, "_query_" + file.filename)
+    with open(tmp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    query_embeddings = get_embeddings(query_path)
+    query_embeddings = get_embeddings(tmp_path)
 
     try:
-        os.remove(query_path)
+        os.remove(tmp_path)
     except OSError:
         pass
 
     if not query_embeddings:
-        return {"result": "No face detected. Please upload a clear photo.", "count": 0, "photos": []}
+        return {"result": "No face detected. Please upload a clear photo.",
+                "count": 0, "photos": []}
 
     with index_lock:
-        index, filenames = load_index()
+        index, filenames, urls = load_index()
 
     if index.ntotal == 0:
         return {"result": "No picture detected", "count": 0, "photos": []}
@@ -168,38 +198,30 @@ async def search(file: UploadFile = File(...)):
             if fname not in best_scores or score > best_scores[fname]:
                 best_scores[fname] = score
 
-    sorted_scores = sorted(best_scores.items(), key=lambda x: x[1], reverse=True)
-    print(f"[search] top scores: {[(f, round(s,4)) for f,s in sorted_scores[:10]]}")
-
     matched = [fname for fname, score in best_scores.items() if score >= THRESHOLD]
     unique_matched = list(dict.fromkeys(matched))
-    photos = ["/storage/uploads/" + f for f in unique_matched]
 
-    if not photos:
+    if not unique_matched:
         return {"result": "No picture detected", "count": 0, "photos": []}
 
+    photos = [urls[f] for f in unique_matched if f in urls]
     return {"result": "Photos found", "count": len(photos), "photos": photos}
 
 @app.get("/dataset/count")
 def dataset_count():
-    files = [
-        f for f in os.listdir(UPLOAD_DIR)
-        if not f.startswith("_query_") and
-        f.lower().rsplit(".", 1)[-1] in {"jpg", "jpeg", "png", "webp", "bmp"}
-    ]
-    return {"count": len(files)}
+    with index_lock:
+        _, filenames, _ = load_index()
+    return {"count": len(set(filenames))}
 
 @app.delete("/dataset/clear")
 async def clear_dataset(password: str = Header(None)):
     if password != ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Unauthorized")
+    try:
+        cloudinary.api.delete_resources_by_prefix("wedsnap/")
+    except Exception as e:
+        print(f"[clear] Cloudinary error: {e}")
     with index_lock:
-        for f in os.listdir(UPLOAD_DIR):
-            if not f.startswith("_query_"):
-                try:
-                    os.remove(os.path.join(UPLOAD_DIR, f))
-                except Exception:
-                    pass
         for fpath in [FAISS_INDEX_FILE, FILENAMES_FILE]:
             if os.path.exists(fpath):
                 os.remove(fpath)
