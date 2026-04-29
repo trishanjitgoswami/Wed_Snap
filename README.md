@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Wedding Face Recognition 📸
 
 A face recognition system for wedding events. Guests upload a selfie and instantly find every event photo they appear in — no app download required.
@@ -163,3 +164,6 @@ After deploying, open the frontend **Settings ⚙️** tab and update the Backen
 ## License
 
 MIT — free to use and modify for personal or commercial projects.
+=======
+# Wed_Snap
+>>>>>>> 89721dd336800729bf69a1a62c34111d1f757529
