@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wedding Memories</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body { min-height: 100vh; background: #0a0608; font-family: 'Jost', sans-serif; color: #f0ebe4; overflow-x: hidden; }
+    .bg { position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 80% 60% at 50% 0%, #3a1a2e 0%, transparent 70%), radial-gradient(ellipse 60% 40% at 20% 100%, #1a0f2e 0%, transparent 60%), #0a0608; }
+    .petals { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+    .petal { position: absolute; width: 6px; height: 10px; border-radius: 50% 50% 50% 0; opacity: 0; animation: fall linear infinite; }
+    @keyframes fall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0; } 10% { opacity: 0.6; } 90% { opacity: 0.3; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+    .wrap { position: relative; z-index: 1; max-width: 700px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    header { text-align: center; margin-bottom: 3rem; }
+    .divider { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.2rem; }
+    .divider-line { flex: 1; height: 0.5px; background: linear-gradient(90deg, transparent, rgba(212,175,118,0.4), transparent); }
+    .divider-icon { color: #d4af76; font-size: 14px; letter-spacing: 6px; }
+    .title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2.8rem, 8vw, 5rem); font-weight: 300; line-height: 1.1; color: #f0ebe4; letter-spacing: 0.02em; margin-bottom: 0.5rem; }
+    .title em { font-style: italic; color: #d4af76; }
+    .subtitle { font-size: 0.8rem; letter-spacing: 0.25em; text-transform: uppercase; color: rgba(212,175,118,0.7); font-weight: 300; }
+    .qr-section { text-align: center; margin-bottom: 2.5rem; }
+    .qr-wrap { display: inline-block; padding: 12px; background: rgba(255,255,255,0.06); border: 0.5px solid rgba(212,175,118,0.25); border-radius: 12px; margin-bottom: 0.6rem; }
+    .qr-label { font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(212,175,118,0.5); }
+    .card { background: rgba(255,255,255,0.04); border: 0.5px solid rgba(212,175,118,0.2); border-radius: 16px; padding: 2rem; backdrop-filter: blur(10px); }
+    .backend-bar { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.3); border: 0.5px solid rgba(212,175,118,0.15); border-radius: 8px; padding: 10px 14px; margin-bottom: 1.5rem; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex-shrink: 0; transition: background 0.3s; }
+    .dot.online { background: #4caf50; }
+    .dot.offline { background: #e74c3c; }
+    .backend-url { flex: 1; font-size: 0.75rem; color: rgba(240,235,228,0.5); font-family: monospace; }
+    .backend-status { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
+    .backend-status.online { color: rgba(100,180,100,0.7); }
+    .backend-status.offline { color: rgba(200,80,80,0.7); }
+    .tab-row { display: flex; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 3px; margin-bottom: 1.5rem; }
+    .tab { flex: 1; padding: 8px; text-align: center; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(240,235,228,0.45); border-radius: 6px; cursor: pointer; transition: all 0.2s; border: none; background: transparent; font-family: 'Jost', sans-serif; }
+    .tab.active { background: rgba(212,175,118,0.15); color: #d4af76; border: 0.5px solid rgba(212,175,118,0.3); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card-title { font-family: 'Cormorant Garamond', serif; font-size: 1.4rem; font-weight: 300; color: #d4af76; margin-bottom: 0.4rem; }
+    .card-sub { font-size: 0.75rem; color: rgba(240,235,228,0.45); letter-spacing: 0.1em; margin-bottom: 1.5rem; }
+    .upload-zone { border: 1px dashed rgba(212,175,118,0.3); border-radius: 12px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.3s; position: relative; overflow: hidden; margin-bottom: 0.5rem; }
+    .upload-zone:hover { border-color: rgba(212,175,118,0.6); background: rgba(212,175,118,0.05); }
+    .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .upload-icon { width: 48px; height: 48px; border-radius: 50%; background: rgba(212,175,118,0.1); border: 0.5px solid rgba(212,175,118,0.3); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-size: 20px; }
+    .upload-text { font-size: 0.85rem; color: rgba(240,235,228,0.6); margin-bottom: 0.3rem; }
+    .upload-hint { font-size: 0.7rem; color: rgba(240,235,228,0.3); letter-spacing: 0.1em; }
+    .preview-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin: 1rem 0; }
+    .preview-thumb { width: 70px; height: 70px; object-fit: cover; border-radius: 50%; border: 2px solid rgba(212,175,118,0.4); }
+    .btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #d4af76, #c49a5a); border: none; border-radius: 10px; color: #0a0608; font-family: 'Jost', sans-serif; font-size: 0.8rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; margin-top: 1rem; }
+    .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-outline { background: transparent; border: 0.5px solid rgba(212,175,118,0.4); color: #d4af76; }
+    .btn-outline:hover { background: rgba(212,175,118,0.08); }
+    .btn-danger { background: linear-gradient(135deg, #c0392b, #e74c3c); color: #fff; }
+    .btn-stop { background: linear-gradient(135deg, #e67e22, #f39c12); color: #0a0608; }
+    .admin-lock { text-align: center; padding: 1.5rem 0; }
+    .lock-icon { font-size: 2rem; margin-bottom: 0.8rem; display: block; }
+    .lock-text { font-size: 0.8rem; color: rgba(240,235,228,0.4); margin-bottom: 1rem; }
+    .pass-input { width: 100%; padding: 12px 16px; background: rgba(0,0,0,0.3); border: 0.5px solid rgba(212,175,118,0.2); border-radius: 8px; color: #f0ebe4; font-family: 'Jost', sans-serif; font-size: 0.85rem; outline: none; margin-bottom: 0.8rem; text-align: center; letter-spacing: 0.3em; }
+    .pass-input:focus { border-color: rgba(212,175,118,0.5); }
+    .pass-input::placeholder { letter-spacing: 0.1em; color: rgba(240,235,228,0.2); }
+    .url-input { width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.3); border: 0.5px solid rgba(212,175,118,0.2); border-radius: 8px; color: #f0ebe4; font-family: monospace; font-size: 0.8rem; outline: none; margin-bottom: 0.8rem; }
+    .url-input:focus { border-color: rgba(212,175,118,0.5); }
+    .field-label { font-size: 0.75rem; color: rgba(240,235,228,0.5); letter-spacing: 0.1em; display: block; margin-bottom: 6px; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 1.5rem; }
+    .gallery-item { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 1; border: 0.5px solid rgba(212,175,118,0.2); cursor: pointer; transition: transform 0.2s; }
+    .gallery-item:hover { transform: scale(1.02); }
+    .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
+    .gallery-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.6), transparent); opacity: 0; transition: opacity 0.2s; display: flex; align-items: flex-end; padding: 8px; }
+    .gallery-item:hover .gallery-overlay { opacity: 1; }
+    .dl-btn { font-size: 0.65rem; letter-spacing: 0.1em; color: #d4af76; text-transform: uppercase; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; border: none; cursor: pointer; font-family: 'Jost', sans-serif; }
+    .status { text-align: center; padding: 1rem; font-size: 0.8rem; }
+    .status.loading { color: rgba(212,175,118,0.7); }
+    .status.error { color: rgba(200,80,80,0.8); }
+    .status.success { color: rgba(100,180,100,0.8); }
+    .status.stopped { color: rgba(230,126,34,0.9); }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 1.5px solid rgba(212,175,118,0.2); border-top-color: #d4af76; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .no-match { text-align: center; padding: 2rem; }
+    .no-match-title { font-family: 'Cormorant Garamond', serif; font-size: 1.8rem; font-weight: 300; color: rgba(212,175,118,0.5); margin-bottom: 0.5rem; }
+    .no-match-sub { font-size: 0.75rem; color: rgba(240,235,228,0.3); }
+    .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px); background: #d4af76; color: #0a0608; padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; font-weight: 500; letter-spacing: 0.1em; transition: transform 0.3s; z-index: 1000; pointer-events: none; }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .dataset-badge { display: inline-block; background: rgba(212,175,118,0.12); border: 0.5px solid rgba(212,175,118,0.3); border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; letter-spacing: 0.15em; color: rgba(212,175,118,0.8); margin-bottom: 1rem; }
+    .progress-bar-wrap { background: rgba(0,0,0,0.3); border-radius: 10px; height: 8px; margin: 0.8rem 0 0.3rem; overflow: hidden; display: none; }
+    .progress-bar { height: 100%; background: linear-gradient(90deg, #d4af76, #c49a5a); border-radius: 10px; transition: width 0.2s; width: 0%; }
+    .progress-label { font-size: 0.7rem; color: rgba(212,175,118,0.55); text-align: center; min-height: 1.2em; margin-bottom: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .divider-small { height: 0.5px; background: rgba(212,175,118,0.15); margin: 1.5rem 0; }
+  </style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="petals" id="petals"></div>
+<div class="wrap">
+  <header>
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-icon">✦ ✦ ✦</div>
+      <div class="divider-line"></div>
+    </div>
+    <h1 class="title">Wedding<br><em>Memories</em></h1>
+    <p class="subtitle">Your memories &nbsp;·&nbsp; Our responsibility</p>
+  </header>
+
+  <div class="qr-section">
+    <div class="qr-wrap"><canvas id="qrCanvas" width="120" height="120"></canvas></div>
+    <div class="qr-label">Scan to open on your phone</div>
+  </div>
+
+  <div class="card">
+    <div class="backend-bar">
+      <div class="dot" id="dot"></div>
+      <span class="backend-url" id="backendUrlDisplay">http://127.0.0.1:8003</span>
+      <span class="backend-status" id="backendStatusText">checking…</span>
+    </div>
+
+    <div class="tab-row">
+      <button class="tab active" onclick="switchTab('guest')" id="tab-guest">Find My Photos</button>
+      <button class="tab" onclick="switchTab('admin')" id="tab-admin">Admin 🔒</button>
+      <button class="tab" onclick="switchTab('settings')" id="tab-settings">Settings ⚙️</button>
+    </div>
+
+    <!-- GUEST -->
+    <div id="panel-guest" class="panel active">
+      <div class="card-title">Find yourself</div>
+      <div class="card-sub">Upload your selfie · we'll find all your photos instantly</div>
+      <div id="datasetCount" class="dataset-badge">Loading dataset…</div>
+      <div class="upload-zone" onclick="document.getElementById('guestFile').click()">
+        <input type="file" id="guestFile" accept="image/*" multiple onchange="handleGuestFiles(this)" />
+        <div id="guestPlaceholder">
+          <div class="upload-icon">📷</div>
+          <div class="upload-text">Upload your selfie</div>
+          <div class="upload-hint">JPG · PNG · select multiple for better results</div>
+        </div>
+        <div id="previewRow" class="preview-row" style="display:none"></div>
+      </div>
+      <div id="selectedCount" style="text-align:center;font-size:0.75rem;color:rgba(212,175,118,0.6);margin-top:0.5rem;"></div>
+      <div class="progress-bar-wrap" id="guestProgressWrap">
+        <div class="progress-bar" id="guestProgressBar"></div>
+      </div>
+      <button class="btn" id="searchBtn" onclick="searchFace()" disabled>Search My Photos</button>
+      <div id="searchStatus"></div>
+      <div id="galleryOut"></div>
+    </div>
+
+    <!-- ADMIN -->
+    <div id="panel-admin" class="panel">
+      <div id="adminLock">
+        <div class="admin-lock">
+          <span class="lock-icon">🔒</span>
+          <div class="lock-text">Enter admin password to manage event photos</div>
+          <input type="password" class="pass-input" id="adminPass" placeholder="Password"
+            onkeydown="if(event.key==='Enter') unlockAdmin()" />
+          <button class="btn btn-outline" onclick="unlockAdmin()">Unlock</button>
+        </div>
+      </div>
+      <div id="adminPanel" style="display:none">
+        <div class="card-title">Upload Event Photos</div>
+        <div class="card-sub">Select all photos at once — dark photos enhanced automatically</div>
+        <div class="upload-zone" id="adminUploadZone" onclick="triggerAdminUpload()">
+          <input type="file" id="adminFile" accept="image/*" multiple onchange="handleAdminUpload(this)" />
+          <div class="upload-icon">＋</div>
+          <div class="upload-text">Add photos to dataset</div>
+          <div class="upload-hint">Select multiple files at once</div>
+        </div>
+        <div class="progress-bar-wrap" id="adminProgressWrap">
+          <div class="progress-bar" id="adminProgressBar"></div>
+        </div>
+        <div class="progress-label" id="adminProgressLabel"></div>
+        <button class="btn btn-stop" id="stopBtn" onclick="stopUpload()" style="display:none;margin-top:0.8rem;">⏹ Stop Upload</button>
+        <div id="adminStatus"></div>
+        <div class="divider-small"></div>
+        <div class="card-title" style="color:rgba(200,80,80,0.8);font-size:1.1rem;">Danger Zone</div>
+        <div class="card-sub">Permanently deletes all photos and face data.</div>
+        <button class="btn btn-danger" onclick="clearDataset()" style="margin-top:0;">🗑 Clear Entire Database</button>
+        <div id="clearStatus"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="panel-settings" class="panel">
+      <div class="card-title">Backend settings</div>
+      <div class="card-sub">Point this app to your running Python backend</div>
+      <label class="field-label">Backend URL</label>
+      <input type="text" class="url-input" id="backendUrlInput"
+        value="http://127.0.0.1:8003" placeholder="http://127.0.0.1:8003" />
+      <button class="btn" onclick="saveBackendUrl()">Save & Test Connection</button>
+      <div id="testStatus"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let BACKEND = localStorage.getItem('weddingBackend') || 'http://127.0.0.1:8003';
+let guestFiles = [];
+let uploadRunning = false;
+let stopRequested = false;
+const ADMIN_PASSWORD = '08420842';
+
+function showToast(msg, dur = 2500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+function switchTab(tab) {
+  ['guest','admin','settings'].forEach(t => {
+    document.getElementById('panel-'+t).classList.toggle('active', t===tab);
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+async function checkBackend() {
+  document.getElementById('backendUrlDisplay').textContent = BACKEND;
+  document.getElementById('backendUrlInput').value = BACKEND;
+  try {
+    const res = await fetch(BACKEND+'/', { signal: AbortSignal.timeout(3000) });
+    setOnline(res.ok || res.status === 200);
+  } catch(e) { setOnline(false); }
+  loadDatasetCount();
+}
+
+function setOnline(ok) {
+  document.getElementById('dot').className = 'dot '+(ok?'online':'offline');
+  const el = document.getElementById('backendStatusText');
+  el.textContent = ok ? 'connected' : 'offline';
+  el.className = 'backend-status '+(ok?'online':'offline');
+}
+
+async function saveBackendUrl() {
+  const val = document.getElementById('backendUrlInput').value.trim().replace(/\/$/,'');
+  BACKEND = val;
+  localStorage.setItem('weddingBackend', BACKEND);
+  document.getElementById('testStatus').innerHTML =
+    '<div class="status loading"><span class="spinner"></span>Testing…</div>';
+  try {
+    await fetch(BACKEND+'/', { signal: AbortSignal.timeout(4000) });
+    setOnline(true);
+    document.getElementById('testStatus').innerHTML =
+      '<div class="status success">✓ Connected successfully</div>';
+    showToast('Backend connected!');
+    loadDatasetCount();
+  } catch(e) {
+    setOnline(false);
+    document.getElementById('testStatus').innerHTML =
+      '<div class="status error">✗ Cannot reach backend. Is it running?</div>';
+  }
+}
+
+async function loadDatasetCount() {
+  try {
+    const res = await fetch(BACKEND+'/dataset/count', { signal: AbortSignal.timeout(3000) });
+    const data = await res.json();
+    document.getElementById('datasetCount').textContent =
+      `${data.count} photo${data.count!==1?'s':''} in dataset`;
+  } catch(e) {
+    document.getElementById('datasetCount').textContent = 'Dataset unavailable';
+  }
+}
+
+function unlockAdmin() {
+  if (document.getElementById('adminPass').value === ADMIN_PASSWORD) {
+    document.getElementById('adminLock').style.display = 'none';
+    document.getElementById('adminPanel').style.display = 'block';
+    showToast('Admin access granted');
+  } else {
+    showToast('Wrong password');
+    document.getElementById('adminPass').value = '';
+  }
+}
+
+function triggerAdminUpload() {
+  if (!uploadRunning) document.getElementById('adminFile').click();
+}
+
+function stopUpload() {
+  stopRequested = true;
+  const btn = document.getElementById('stopBtn');
+  btn.textContent = '⏹ Stopping…';
+  btn.disabled = true;
+}
+
+async function handleAdminUpload(input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  uploadRunning = true;
+  stopRequested = false;
+
+  const statusEl      = document.getElementById('adminStatus');
+  const progressWrap  = document.getElementById('adminProgressWrap');
+  const progressBar   = document.getElementById('adminProgressBar');
+  const progressLabel = document.getElementById('adminProgressLabel');
+  const stopBtn       = document.getElementById('stopBtn');
+
+  progressWrap.style.display = 'block';
+  progressBar.style.width = '0%';
+  stopBtn.style.display = 'block';
+  stopBtn.disabled = false;
+  stopBtn.textContent = '⏹ Stop Upload';
+  statusEl.innerHTML = '';
+
+  let ok = 0, fail = 0, stopped = false;
+
+  for (let i = 0; i < files.length; i++) {
+    if (stopRequested) { stopped = true; break; }
+    const name = files[i].name.length > 30
+      ? files[i].name.substring(0,27)+'…' : files[i].name;
+    progressLabel.textContent = `Uploading ${i+1} of ${files.length} — ${name}`;
+    try {
+      const fd = new FormData();
+      fd.append('file', files[i]);
+      const r = await fetch(BACKEND+'/upload_dataset/', {
+        method: 'POST', body: fd,
+        headers: { password: ADMIN_PASSWORD },
+      });
+      r.ok ? ok++ : fail++;
+    } catch(e) { fail++; }
+    progressBar.style.width = Math.round(((i+1)/files.length)*100)+'%';
+    loadDatasetCount();
+  }
+
+  stopBtn.style.display = 'none';
+  uploadRunning = false;
+  progressLabel.textContent = '';
+
+  if (stopped) {
+    statusEl.innerHTML =
+      `<div class="status stopped">⏹ Stopped — uploaded ${ok} of ${files.length}${fail?` · Failed: ${fail}`:''}</div>`;
+    showToast(`Stopped at ${ok} photos`);
+  } else {
+    statusEl.innerHTML =
+      `<div class="status ${fail?'error':'success'}">✓ Done — ${ok} uploaded${fail?` · ${fail} failed`:''}</div>`;
+    showToast('Upload complete!');
+  }
+  input.value = '';
+}
+
+async function clearDataset() {
+  if (!confirm('Are you sure? This permanently deletes ALL photos and face data.')) return;
+  const statusEl = document.getElementById('clearStatus');
+  statusEl.innerHTML = '<div class="status loading"><span class="spinner"></span>Clearing…</div>';
+  try {
+    await fetch(BACKEND+'/dataset/clear', {
+      method: 'DELETE', headers: { password: ADMIN_PASSWORD },
+    });
+    statusEl.innerHTML = '<div class="status success">✓ Database cleared</div>';
+    showToast('Database cleared!');
+    loadDatasetCount();
+  } catch(e) {
+    statusEl.innerHTML = '<div class="status error">✗ Failed to clear</div>';
+  }
+}
+
+function handleGuestFiles(input) {
+  guestFiles = Array.from(input.files);
+  if (!guestFiles.length) return;
+  const previewRow = document.getElementById('previewRow');
+  previewRow.innerHTML = '';
+  previewRow.style.display = 'flex';
+  document.getElementById('guestPlaceholder').style.display = 'none';
+  guestFiles.forEach(file => {
+    const img = document.createElement('img');
+    img.className = 'preview-thumb';
+    img.src = URL.createObjectURL(file);
+    previewRow.appendChild(img);
+  });
+  document.getElementById('selectedCount').textContent =
+    `${guestFiles.length} photo${guestFiles.length>1?'s':''} selected`;
+  document.getElementById('searchBtn').disabled = false;
+  document.getElementById('galleryOut').innerHTML = '';
+  document.getElementById('searchStatus').innerHTML = '';
+}
+
+async function searchFace() {
+  if (!guestFiles.length) return;
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+  document.getElementById('galleryOut').innerHTML = '';
+  const progressWrap = document.getElementById('guestProgressWrap');
+  const progressBar  = document.getElementById('guestProgressBar');
+  progressWrap.style.display = 'block';
+  progressBar.style.width = '0%';
+  document.getElementById('searchStatus').innerHTML =
+    '<div class="status loading"><span class="spinner"></span>Searching…</div>';
+
+  const allMatches = new Set();
+  for (let i = 0; i < guestFiles.length; i++) {
+    try {
+      const fd = new FormData();
+      fd.append('file', guestFiles[i]);
+      const r = await fetch(BACKEND+'/search/', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (data.photos) data.photos.forEach(p => allMatches.add(p));
+    } catch(e) {}
+    progressBar.style.width = Math.round(((i+1)/guestFiles.length)*100)+'%';
+  }
+
+  progressWrap.style.display = 'none';
+  document.getElementById('searchStatus').innerHTML = '';
+
+  if (allMatches.size === 0) {
+    document.getElementById('galleryOut').innerHTML = `
+      <div class="no-match">
+        <div class="no-match-title">No photos found</div>
+        <div class="no-match-sub">Try uploading a clearer or different selfie</div>
+      </div>`;
+  } else {
+    document.getElementById('searchStatus').innerHTML =
+      `<div class="status success">✓ Found ${allMatches.size} photo(s)</div>`;
+    const gallery = document.createElement('div');
+    gallery.className = 'gallery';
+    allMatches.forEach(imgPath => {
+      const fullUrl = BACKEND + imgPath;
+      const filename = imgPath.split('/').pop();
+      const el = document.createElement('div');
+      el.className = 'gallery-item';
+      el.innerHTML = `
+        <img src="${fullUrl}" alt="match" loading="lazy" />
+        <div class="gallery-overlay">
+          <button class="dl-btn" onclick="downloadPhoto('${fullUrl}','${filename}')">⬇ Download</button>
+        </div>`;
+      gallery.appendChild(el);
+    });
+    document.getElementById('galleryOut').appendChild(gallery);
+  }
+  btn.disabled = false;
+}
+
+async function downloadPhoto(url, filename) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch(e) {
+    showToast('Download failed — right-click → Save image');
+  }
+}
+
+function generateQR() {
+  const canvas = document.getElementById('qrCanvas');
+  if (typeof QRCode !== 'undefined') {
+    QRCode.toCanvas(canvas, window.location.href, {
+      width: 120, margin: 1,
+      color: { dark: '#d4af76', light: '#00000000' }
+    });
+  }
+}
+
+function spawnPetals() {
+  const container = document.getElementById('petals');
+  const colors = ['#d4af76','#f0ebe4','#c49a5a','#e8d5b0'];
+  for (let i = 0; i < 20; i++) {
+    const p = document.createElement('div');
+    p.className = 'petal';
+    p.style.left = Math.random()*100+'%';
+    p.style.background = colors[Math.floor(Math.random()*colors.length)];
+    p.style.animationDuration = (8+Math.random()*12)+'s';
+    p.style.animationDelay = (Math.random()*10)+'s';
+    container.appendChild(p);
+  }
+}
+
+spawnPetals();
+checkBackend();
+window.addEventListener('load', generateQR);
+setTimeout(generateQR, 500);
+</script>
+</body>
+</html>
