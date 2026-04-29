@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Wedding Memories</title>
+  <title>WedSnap</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
@@ -90,6 +90,9 @@
     .progress-bar { height: 100%; background: linear-gradient(90deg, #d4af76, #c49a5a); border-radius: 10px; transition: width 0.2s; width: 0%; }
     .progress-label { font-size: 0.7rem; color: rgba(212,175,118,0.55); text-align: center; min-height: 1.2em; margin-bottom: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .divider-small { height: 0.5px; background: rgba(212,175,118,0.15); margin: 1.5rem 0; }
+    .otp-input { width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.3); border: 0.5px solid rgba(212,175,118,0.2); border-radius: 8px; color: #f0ebe4; font-family: 'Jost', sans-serif; font-size: 1.2rem; outline: none; margin-bottom: 0.8rem; text-align: center; letter-spacing: 0.5em; }
+    .otp-input:focus { border-color: rgba(212,175,118,0.5); }
+    .otp-input::placeholder { letter-spacing: 0.1em; color: rgba(240,235,228,0.2); font-size: 0.8rem; }
   </style>
 </head>
 <body>
@@ -102,7 +105,7 @@
       <div class="divider-icon">✦ ✦ ✦</div>
       <div class="divider-line"></div>
     </div>
-    <h1 class="title">Wedding<br><em>Memories</em></h1>
+    <h1 class="title">Wed<br><em>Snap</em></h1>
     <p class="subtitle">Your memories &nbsp;·&nbsp; Our responsibility</p>
   </header>
 
@@ -114,7 +117,7 @@
   <div class="card">
     <div class="backend-bar">
       <div class="dot" id="dot"></div>
-      <span class="backend-url" id="backendUrlDisplay">http://127.0.0.1:8003</span>
+      <span class="backend-url" id="backendUrlDisplay">https://wedsnap-backend.onrender.com</span>
       <span class="backend-status" id="backendStatusText">checking…</span>
     </div>
 
@@ -124,7 +127,7 @@
       <button class="tab" onclick="switchTab('settings')" id="tab-settings">Settings ⚙️</button>
     </div>
 
-    <!-- GUEST -->
+    <!-- GUEST PANEL -->
     <div id="panel-guest" class="panel active">
       <div class="card-title">Find yourself</div>
       <div class="card-sub">Upload your selfie · we'll find all your photos instantly</div>
@@ -147,17 +150,34 @@
       <div id="galleryOut"></div>
     </div>
 
-    <!-- ADMIN -->
+    <!-- ADMIN PANEL -->
     <div id="panel-admin" class="panel">
+      <!-- Step 1: Password -->
       <div id="adminLock">
         <div class="admin-lock">
-          <span class="lock-icon">🔒</span>
-          <div class="lock-text">Enter admin password to manage event photos</div>
-          <input type="password" class="pass-input" id="adminPass" placeholder="Password"
-            onkeydown="if(event.key==='Enter') unlockAdmin()" />
-          <button class="btn btn-outline" onclick="unlockAdmin()">Unlock</button>
+          <div id="passwordStep">
+            <span class="lock-icon">🔒</span>
+            <div class="lock-text">Enter admin password to continue</div>
+            <input type="password" class="pass-input" id="adminPass"
+              placeholder="Password"
+              onkeydown="if(event.key==='Enter') submitPassword()" />
+            <button class="btn btn-outline" onclick="submitPassword()">Submit</button>
+            <div id="passwordStatus"></div>
+          </div>
+          <!-- Step 2: OTP -->
+          <div id="otpStep" style="display:none">
+            <span class="lock-icon">📱</span>
+            <div class="lock-text">OTP sent to your registered number · valid for 5 minutes</div>
+            <input type="number" class="otp-input" id="otpInput"
+              placeholder="Enter 6-digit OTP"
+              onkeydown="if(event.key==='Enter') submitOtp()" />
+            <button class="btn btn-outline" onclick="submitOtp()">Verify OTP</button>
+            <div id="otpStatus"></div>
+          </div>
         </div>
       </div>
+
+      <!-- Unlocked Admin Panel -->
       <div id="adminPanel" style="display:none">
         <div class="card-title">Upload Event Photos</div>
         <div class="card-sub">Select all photos at once — dark photos enhanced automatically</div>
@@ -171,7 +191,8 @@
           <div class="progress-bar" id="adminProgressBar"></div>
         </div>
         <div class="progress-label" id="adminProgressLabel"></div>
-        <button class="btn btn-stop" id="stopBtn" onclick="stopUpload()" style="display:none;margin-top:0.8rem;">⏹ Stop Upload</button>
+        <button class="btn btn-stop" id="stopBtn" onclick="stopUpload()"
+          style="display:none;margin-top:0.8rem;">⏹ Stop Upload</button>
         <div id="adminStatus"></div>
         <div class="divider-small"></div>
         <div class="card-title" style="color:rgba(200,80,80,0.8);font-size:1.1rem;">Danger Zone</div>
@@ -181,13 +202,14 @@
       </div>
     </div>
 
-    <!-- SETTINGS -->
+    <!-- SETTINGS PANEL -->
     <div id="panel-settings" class="panel">
       <div class="card-title">Backend settings</div>
       <div class="card-sub">Point this app to your running Python backend</div>
       <label class="field-label">Backend URL</label>
       <input type="text" class="url-input" id="backendUrlInput"
-        value="http://127.0.0.1:8003" placeholder="http://127.0.0.1:8003" />
+        value="https://wedsnap-backend.onrender.com"
+        placeholder="https://wedsnap-backend.onrender.com" />
       <button class="btn" onclick="saveBackendUrl()">Save & Test Connection</button>
       <div id="testStatus"></div>
     </div>
@@ -197,7 +219,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-let BACKEND = localStorage.getItem('weddingBackend') || 'http://127.0.0.1:8003';
+let BACKEND = localStorage.getItem('weddingBackend') || 'https://wedsnap-backend.onrender.com';
 let guestFiles = [];
 let uploadRunning = false;
 let stopRequested = false;
@@ -221,7 +243,7 @@ async function checkBackend() {
   document.getElementById('backendUrlDisplay').textContent = BACKEND;
   document.getElementById('backendUrlInput').value = BACKEND;
   try {
-    const res = await fetch(BACKEND+'/', { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(BACKEND+'/', { signal: AbortSignal.timeout(5000) });
     setOnline(res.ok || res.status === 200);
   } catch(e) { setOnline(false); }
   loadDatasetCount();
@@ -241,7 +263,7 @@ async function saveBackendUrl() {
   document.getElementById('testStatus').innerHTML =
     '<div class="status loading"><span class="spinner"></span>Testing…</div>';
   try {
-    await fetch(BACKEND+'/', { signal: AbortSignal.timeout(4000) });
+    await fetch(BACKEND+'/', { signal: AbortSignal.timeout(5000) });
     setOnline(true);
     document.getElementById('testStatus').innerHTML =
       '<div class="status success">✓ Connected successfully</div>';
@@ -256,7 +278,7 @@ async function saveBackendUrl() {
 
 async function loadDatasetCount() {
   try {
-    const res = await fetch(BACKEND+'/dataset/count', { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(BACKEND+'/dataset/count', { signal: AbortSignal.timeout(5000) });
     const data = await res.json();
     document.getElementById('datasetCount').textContent =
       `${data.count} photo${data.count!==1?'s':''} in dataset`;
@@ -265,17 +287,63 @@ async function loadDatasetCount() {
   }
 }
 
-function unlockAdmin() {
-  if (document.getElementById('adminPass').value === ADMIN_PASSWORD) {
-    document.getElementById('adminLock').style.display = 'none';
-    document.getElementById('adminPanel').style.display = 'block';
-    showToast('Admin access granted');
-  } else {
-    showToast('Wrong password');
-    document.getElementById('adminPass').value = '';
+// ── OTP Login ──────────────────────────────────────────────────────────────────
+async function submitPassword() {
+  const password = document.getElementById('adminPass').value;
+  const statusEl = document.getElementById('passwordStatus');
+  if (!password) { showToast('Enter password'); return; }
+
+  statusEl.innerHTML = '<div class="status loading"><span class="spinner"></span>Verifying…</div>';
+
+  try {
+    const r = await fetch(BACKEND+'/verify-password/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    if (r.ok) {
+      statusEl.innerHTML = '';
+      document.getElementById('passwordStep').style.display = 'none';
+      document.getElementById('otpStep').style.display = 'block';
+      showToast('OTP sent to your number!');
+    } else {
+      statusEl.innerHTML = '<div class="status error">✗ Wrong password</div>';
+      document.getElementById('adminPass').value = '';
+      showToast('Wrong password');
+    }
+  } catch(e) {
+    statusEl.innerHTML = '<div class="status error">✗ Cannot reach backend</div>';
   }
 }
 
+async function submitOtp() {
+  const otp = document.getElementById('otpInput').value;
+  const statusEl = document.getElementById('otpStatus');
+  if (!otp) { showToast('Enter OTP'); return; }
+
+  statusEl.innerHTML = '<div class="status loading"><span class="spinner"></span>Verifying OTP…</div>';
+
+  try {
+    const r = await fetch(BACKEND+'/verify-otp/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp: otp.toString() })
+    });
+    if (r.ok) {
+      document.getElementById('adminLock').style.display = 'none';
+      document.getElementById('adminPanel').style.display = 'block';
+      showToast('Access granted! 🎉');
+    } else {
+      const data = await r.json();
+      statusEl.innerHTML = `<div class="status error">✗ ${data.detail}</div>`;
+      showToast(data.detail);
+    }
+  } catch(e) {
+    statusEl.innerHTML = '<div class="status error">✗ Cannot reach backend</div>';
+  }
+}
+
+// ── Admin Upload ───────────────────────────────────────────────────────────────
 function triggerAdminUpload() {
   if (!uploadRunning) document.getElementById('adminFile').click();
 }
@@ -358,6 +426,7 @@ async function clearDataset() {
   }
 }
 
+// ── Guest Search ───────────────────────────────────────────────────────────────
 function handleGuestFiles(input) {
   guestFiles = Array.from(input.files);
   if (!guestFiles.length) return;
