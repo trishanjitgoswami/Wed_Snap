@@ -90,6 +90,7 @@
     .progress-bar { height: 100%; background: linear-gradient(90deg, #d4af76, #c49a5a); border-radius: 10px; transition: width 0.2s; width: 0%; }
     .progress-label { font-size: 0.7rem; color: rgba(212,175,118,0.55); text-align: center; min-height: 1.2em; margin-bottom: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .divider-small { height: 0.5px; background: rgba(212,175,118,0.15); margin: 1.5rem 0; }
+    .waking-up { text-align: center; font-size: 0.75rem; color: rgba(212,175,118,0.6); padding: 0.5rem; }
   </style>
 </head>
 <body>
@@ -116,6 +117,9 @@
       <div class="dot" id="dot"></div>
       <span class="backend-url" id="backendUrlDisplay">https://wedsnap-backend.onrender.com</span>
       <span class="backend-status" id="backendStatusText">checking…</span>
+    </div>
+    <div id="wakingMsg" style="display:none" class="waking-up">
+      <span class="spinner"></span>Server waking up — please wait 30 seconds…
     </div>
 
     <div class="tab-row">
@@ -160,10 +164,9 @@
           <div id="passwordStatus"></div>
         </div>
       </div>
-
       <div id="adminPanel" style="display:none">
         <div class="card-title">Upload Event Photos</div>
-        <div class="card-sub">Select all photos at once — dark photos enhanced automatically</div>
+        <div class="card-sub">Select all photos at once — stored permanently on cloud</div>
         <div class="upload-zone" id="adminUploadZone" onclick="triggerAdminUpload()">
           <input type="file" id="adminFile" accept="image/*" multiple onchange="handleAdminUpload(this)" />
           <div class="upload-icon">＋</div>
@@ -222,13 +225,34 @@ function switchTab(tab) {
   });
 }
 
+// ── Backend check with waking up message ──────────────────────────────────────
 async function checkBackend() {
   document.getElementById('backendUrlDisplay').textContent = BACKEND;
   document.getElementById('backendUrlInput').value = BACKEND;
+  document.getElementById('wakingMsg').style.display = 'none';
+
+  // First try with short timeout
   try {
-    const res = await fetch(BACKEND+'/', { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(BACKEND+'/', { signal: AbortSignal.timeout(6000) });
+    if (res.ok || res.status === 200) {
+      setOnline(true);
+      loadDatasetCount();
+      return;
+    }
+  } catch(e) {}
+
+  // Show waking up message and retry with longer timeout
+  setOnline(false);
+  document.getElementById('wakingMsg').style.display = 'block';
+
+  try {
+    const res = await fetch(BACKEND+'/', { signal: AbortSignal.timeout(60000) });
     setOnline(res.ok || res.status === 200);
-  } catch(e) { setOnline(false); }
+  } catch(e) {
+    setOnline(false);
+  }
+
+  document.getElementById('wakingMsg').style.display = 'none';
   loadDatasetCount();
 }
 
@@ -244,14 +268,18 @@ async function saveBackendUrl() {
   BACKEND = val;
   localStorage.setItem('weddingBackend', BACKEND);
   document.getElementById('testStatus').innerHTML =
-    '<div class="status loading"><span class="spinner"></span>Testing…</div>';
+    '<div class="status loading"><span class="spinner"></span>Testing — may take 30s if server is waking up…</div>';
   try {
-    await fetch(BACKEND+'/', { signal: AbortSignal.timeout(5000) });
-    setOnline(true);
-    document.getElementById('testStatus').innerHTML =
-      '<div class="status success">✓ Connected successfully</div>';
-    showToast('Backend connected!');
-    loadDatasetCount();
+    const res = await fetch(BACKEND+'/', { signal: AbortSignal.timeout(60000) });
+    if (res.ok || res.status === 200) {
+      setOnline(true);
+      document.getElementById('testStatus').innerHTML =
+        '<div class="status success">✓ Connected successfully</div>';
+      showToast('Backend connected!');
+      loadDatasetCount();
+    } else {
+      throw new Error('bad status');
+    }
   } catch(e) {
     setOnline(false);
     document.getElementById('testStatus').innerHTML =
@@ -261,7 +289,7 @@ async function saveBackendUrl() {
 
 async function loadDatasetCount() {
   try {
-    const res = await fetch(BACKEND+'/dataset/count', { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(BACKEND+'/dataset/count', { signal: AbortSignal.timeout(15000) });
     const data = await res.json();
     document.getElementById('datasetCount').textContent =
       `${data.count} photo${data.count!==1?'s':''} in dataset`;
@@ -274,14 +302,12 @@ function submitPassword() {
   const password = document.getElementById('adminPass').value;
   const statusEl = document.getElementById('passwordStatus');
   if (!password) { showToast('Enter password'); return; }
-
   if (password !== ADMIN_PASSWORD) {
     statusEl.innerHTML = '<div class="status error">✗ Wrong password</div>';
     document.getElementById('adminPass').value = '';
     showToast('Wrong password');
     return;
   }
-
   document.getElementById('adminLock').style.display = 'none';
   document.getElementById('adminPanel').style.display = 'block';
   showToast('Access granted! 🎉');
@@ -408,6 +434,7 @@ async function searchFace() {
       fd.append('file', guestFiles[i]);
       const r = await fetch(BACKEND+'/search/', { method: 'POST', body: fd });
       const data = await r.json();
+      // photos are now full Cloudinary URLs
       if (data.photos) data.photos.forEach(p => allMatches.add(p));
     } catch(e) {}
     progressBar.style.width = Math.round(((i+1)/guestFiles.length)*100)+'%';
@@ -427,15 +454,15 @@ async function searchFace() {
       `<div class="status success">✓ Found ${allMatches.size} photo(s)</div>`;
     const gallery = document.createElement('div');
     gallery.className = 'gallery';
-    allMatches.forEach(imgPath => {
-      const fullUrl = BACKEND + imgPath;
-      const filename = imgPath.split('/').pop();
+    allMatches.forEach(photoUrl => {
+      // photoUrl is now a full Cloudinary URL — use directly
+      const filename = photoUrl.split('/').pop();
       const el = document.createElement('div');
       el.className = 'gallery-item';
       el.innerHTML = `
-        <img src="${fullUrl}" alt="match" loading="lazy" />
+        <img src="${photoUrl}" alt="match" loading="lazy" />
         <div class="gallery-overlay">
-          <button class="dl-btn" onclick="downloadPhoto('${fullUrl}','${filename}')">⬇ Download</button>
+          <button class="dl-btn" onclick="downloadPhoto('${photoUrl}','${filename}')">⬇ Download</button>
         </div>`;
       gallery.appendChild(el);
     });
@@ -446,11 +473,13 @@ async function searchFace() {
 
 async function downloadPhoto(url, filename) {
   try {
+    const res = await fetch(url);
+    const blob = await res.blob();
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = filename;
-    a.target = '_blank';
     a.click();
+    URL.revokeObjectURL(a.href);
   } catch(e) {
     showToast('Download failed — right-click → Save image');
   }

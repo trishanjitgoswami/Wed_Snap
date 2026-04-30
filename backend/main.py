@@ -22,10 +22,13 @@ FAISS_INDEX_FILE = "storage/faiss.index"
 FILENAMES_FILE   = "storage/filenames.pkl"
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
+# Facenet512 = best speed/accuracy balance
+# Lower threshold = catches more matches (glasses, angles, dark light)
+# Higher threshold = stricter (less noise)
 MODEL         = "Facenet512"
 DETECTOR      = "opencv"
 EMBEDDING_DIM = 512
-THRESHOLD     = 0.45
+THRESHOLD     = 0.40
 MAX_NEIGHBORS = 500
 
 app = FastAPI(title="WedSnap API")
@@ -33,6 +36,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 index_lock = threading.Lock()
 
+# ── Image enhancement for dark/low light photos ────────────────────────────────
 def enhance_image(img_path):
     try:
         img = cv2.imread(img_path)
@@ -79,7 +83,10 @@ def extract_from_path(path, min_conf=0.50):
         return []
 
 def get_embeddings(img_path):
+    # Pass 1: original image
     embeddings = extract_from_path(img_path, min_conf=0.60)
+
+    # Pass 2: enhanced image if nothing found (fixes dark/low light)
     if not embeddings:
         enhanced_path = enhance_image(img_path)
         if enhanced_path:
@@ -90,14 +97,32 @@ def get_embeddings(img_path):
                     os.remove(enhanced_path)
                 except Exception:
                     pass
+
+    # Pass 3: force extract with no confidence filter if still nothing
+    if not embeddings:
+        try:
+            results = DeepFace.represent(
+                img_path=img_path,
+                model_name=MODEL,
+                enforce_detection=False,
+                detector_backend=DETECTOR,
+            )
+            for r in results:
+                emb = r.get("embedding")
+                if emb:
+                    embeddings.append(normalize(np.array(emb, dtype=np.float32)))
+        except Exception:
+            pass
+
     print(f"[embeddings] {os.path.basename(img_path)} → {len(embeddings)} face(s)")
     return embeddings
+
+# ── FAISS index helpers ────────────────────────────────────────────────────────
 def load_index():
     if os.path.exists(FAISS_INDEX_FILE) and os.path.exists(FILENAMES_FILE):
         index = faiss.read_index(FAISS_INDEX_FILE)
         with open(FILENAMES_FILE, "rb") as f:
             data = pickle.load(f)
-        # Handle old format (plain list) vs new format (dict)
         if isinstance(data, list):
             return index, data, {}
         return index, data["filenames"], data["urls"]
@@ -108,6 +133,7 @@ def save_index(index, filenames, urls):
     with open(FILENAMES_FILE, "wb") as f:
         pickle.dump({"filenames": filenames, "urls": urls}, f)
 
+# ── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/")
 def root():
     return {"message": "WedSnap API is running."}
@@ -124,18 +150,26 @@ async def upload_dataset(
     with open(tmp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    # Skip if already indexed
     with index_lock:
         _, existing_filenames, existing_urls = load_index()
         if file.filename in existing_filenames:
-            os.remove(tmp_path)
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
             return {"message": f"'{file.filename}' already in dataset.", "faces_found": 0}
 
     embeddings = get_embeddings(tmp_path)
 
     if not embeddings:
-        os.remove(tmp_path)
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
         return {"message": f"'{file.filename}' uploaded but no face detected.", "faces_found": 0}
 
+    # Upload to Cloudinary for permanent storage
     try:
         result = cloudinary.uploader.upload(
             tmp_path,
@@ -145,7 +179,6 @@ async def upload_dataset(
         )
         photo_url = result["secure_url"]
     except Exception as e:
-        os.remove(tmp_path)
         raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {e}")
     finally:
         try:
@@ -153,6 +186,7 @@ async def upload_dataset(
         except Exception:
             pass
 
+    # Save to FAISS index
     with index_lock:
         index, filenames, urls = load_index()
         for emb in embeddings:
@@ -178,8 +212,11 @@ async def search(file: UploadFile = File(...)):
         pass
 
     if not query_embeddings:
-        return {"result": "No face detected. Please upload a clear photo.",
-                "count": 0, "photos": []}
+        return {
+            "result": "No face detected. Please upload a clear front-facing photo.",
+            "count": 0,
+            "photos": []
+        }
 
     with index_lock:
         index, filenames, urls = load_index()
@@ -187,6 +224,7 @@ async def search(file: UploadFile = File(...)):
     if index.ntotal == 0:
         return {"result": "No picture detected", "count": 0, "photos": []}
 
+    # Get best score per filename — no duplicates
     best_scores = {}
     for q_emb in query_embeddings:
         q = np.array([q_emb], dtype=np.float32)
@@ -200,6 +238,10 @@ async def search(file: UploadFile = File(...)):
             if fname not in best_scores or score > best_scores[fname]:
                 best_scores[fname] = score
 
+    # Log scores for debugging
+    sorted_scores = sorted(best_scores.items(), key=lambda x: x[1], reverse=True)
+    print(f"[search] top scores: {[(f, round(s,4)) for f,s in sorted_scores[:10]]}")
+
     matched = [fname for fname, score in best_scores.items() if score >= THRESHOLD]
     unique_matched = list(dict.fromkeys(matched))
 
@@ -207,6 +249,8 @@ async def search(file: UploadFile = File(...)):
         return {"result": "No picture detected", "count": 0, "photos": []}
 
     photos = [urls[f] for f in unique_matched if f in urls]
+    print(f"[search] returning {len(photos)} photos")
+
     return {"result": "Photos found", "count": len(photos), "photos": photos}
 
 @app.get("/dataset/count")
@@ -221,6 +265,7 @@ async def clear_dataset(password: str = Header(None)):
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         cloudinary.api.delete_resources_by_prefix("wedsnap/")
+        print("[clear] Cloudinary photos deleted")
     except Exception as e:
         print(f"[clear] Cloudinary error: {e}")
     with index_lock:
